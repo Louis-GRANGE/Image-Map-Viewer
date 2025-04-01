@@ -1,0 +1,30 @@
+<!-- index.html -->
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0"
+    />
+    <title>Flutter Web App</title>
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCwJ36D6ExBSkdNO8PNz7XHNZD9TxANBw8"></script>
+    <base href="/" />
+    <link rel="manifest" href="manifest.json" />
+    <script defer src="main.dart.js"></script>
+  </head>
+  <body>
+    <script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", function () {
+          navigator.serviceWorker
+            .register("/flutter_service_worker.js")
+            .then((reg) => console.log("Service worker registered."))
+            .catch((err) =>
+              console.log("Service worker registration failed: ", err)
+            );
+        });
+      }
+    </script>
+  </body>
+</html>
