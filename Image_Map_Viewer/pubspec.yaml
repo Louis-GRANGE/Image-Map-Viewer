@@ -37,6 +37,7 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_map: ^5.0.0
+  flutter_map_marker_cluster: ^1.2.0
   latlong2: ^0.9.1
   image_picker: ^0.8.7+3
   exif: ^2.0.0

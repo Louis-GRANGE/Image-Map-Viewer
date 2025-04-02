@@ -30,10 +30,13 @@ class Folder {
     );
   }
 
-  Future<void> loadImages(BuildContext context, Function(ImageMarker) onMarkerAdded, Function() onStartLoading, Function() onEndLoading) async {
+  Future<void> loadImages(BuildContext context, Function(ImageMarker) onMarkerAdded, Function() onStartLoading, Function(List<Map<String, dynamic>>) onImagesFound, Function(int) onEndLoading) async {
     onStartLoading();
     List<Map<String, dynamic>> images = await ImagePickerService.getAllImagesFromFolder(path);
     LatLng? firstLatLng;
+    int NbImageAdd = 0;
+
+    onImagesFound(images);
 
     for (var image in images) {
       final imageData = image['data'] as Uint8List;
@@ -47,6 +50,8 @@ class Folder {
           _showPopup,
         );
 
+        NbImageAdd++;
+
         ImageMarker imgMarker = ImageMarker(marker: marker, image: ImageData.fromMap(image));
 
         markers.add(imgMarker);
@@ -58,6 +63,6 @@ class Folder {
       }
     }
     
-    onEndLoading();
+    onEndLoading(NbImageAdd);
   }
 }

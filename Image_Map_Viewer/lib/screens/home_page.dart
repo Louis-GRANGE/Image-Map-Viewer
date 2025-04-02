@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart'; // flutter_map package
 import '../services/ImageMarker.dart';
 import 'package:latlong2/latlong.dart'; // For LatLng in flutter_map
+import 'package:flutter_map_marker_cluster/flutter_map_marker_cluster.dart';
 import 'package:file_picker/file_picker.dart';
 import '../services/folder.dart';
 import 'package:intl/intl.dart'; // Make sure this import is at the top
@@ -16,11 +17,18 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> {
   List<Folder> folderList = []; // List of Folder objects
-  List<ImageMarker> markers = []; // List of Folder objects
+  List<ImageMarker> allMarkers = []; // Contient TOUS les marqueurs
+  List<ImageMarker> filteredMarkers = []; // Contient les marqueurs affichés après filtrage
+
   List<Polyline> polylines = [];
   int totalImages = 0;
+  int totalImagesFound = 0;
   LatLng mapCenter = LatLng(0, 0); // Default map center
   bool isLoading = false; // Track loading state
+
+    
+  // To store the currently selected image
+  ImageMarker? selectedImageMarker;
   
   // Liste pour stocker les chemins des images et informations pour le débogage
   List<String> debugInfo = [];
@@ -33,47 +41,40 @@ class _MyHomePageState extends State<MyHomePage> {
   double maxSliderValue = 100.0;
   
   // Function to find the minimum and maximum timestamps for the images
-  void _updateSliderRange() {
-    if (markers.isEmpty) return;
+void _updateSliderRange() {
+  if (allMarkers.isEmpty) return; // Utilisation des marqueurs filtrés
 
-    // Find the earliest and latest timestamps in markers
-    DateTime earliestDate = markers.first.image.timestamp!;
-    DateTime latestDate = markers.first.image.timestamp!;
-
-    for (var marker in markers) {
-      if (marker.image.timestamp!.isBefore(earliestDate)) {
-        earliestDate = marker.image.timestamp!;
-      }
-      if (marker.image.timestamp!.isAfter(latestDate)) {
-        latestDate = marker.image.timestamp!;
-      }
-    }
-
-    // Convert DateTime to Unix timestamp (milliseconds)
-    minSliderValue = earliestDate.millisecondsSinceEpoch.toDouble();
-    maxSliderValue = latestDate.millisecondsSinceEpoch.toDouble();
-
-    // Set initial slider values based on the dates
-    _currentRangeValues = RangeValues(
-      minSliderValue,
-      minSliderValue + (maxSliderValue - minSliderValue) * 0.5, // Example: set default end to mid-range
-    );
-  }
-
-void _filterMarkersByDate() {
-  markers = folderList
-      .where((folder) => folder.isSelected) // Garder seulement les dossiers sélectionnés
-      .expand((folder) => folder.markers) // Extraire les marqueurs
-      .where((marker) {
-        DateTime? date = marker.image.timestamp;
-        if (date == null) return false;
-
-        double timestamp = date.millisecondsSinceEpoch.toDouble();
-        return timestamp >= _currentRangeValues.start && timestamp <= _currentRangeValues.end;
-      })
+  // Filtrer les marqueurs ayant un timestamp non null
+  List<DateTime> timestamps = allMarkers
+      .map((marker) => marker.image.timestamp)
+      .whereType<DateTime>() // Supprime les valeurs nulles
       .toList();
 
-    sortMarkersByDate();
+  if (timestamps.isEmpty) return; // Aucun timestamp valide
+
+  // Trouver la date la plus ancienne et la plus récente
+  DateTime earliestDate = timestamps.reduce((a, b) => a.isBefore(b) ? a : b);
+  DateTime latestDate = timestamps.reduce((a, b) => a.isAfter(b) ? a : b);
+
+  // Convertir en timestamp Unix (ms)
+  minSliderValue = earliestDate.millisecondsSinceEpoch.toDouble();
+  maxSliderValue = latestDate.millisecondsSinceEpoch.toDouble();
+
+  // Définir une valeur par défaut pour le slider
+  _currentRangeValues = RangeValues(minSliderValue,maxSliderValue);
+}
+
+void _filterMarkersByDate() {
+  filteredMarkers = allMarkers
+    .where((marker) {
+      DateTime? date = marker.image.timestamp;
+      if (date == null) return false;
+      double timestamp = date.millisecondsSinceEpoch.toDouble();
+      return timestamp >= _currentRangeValues.start && timestamp <= _currentRangeValues.end;
+    })
+    .toList();
+
+    sortMarkersByDate(filteredMarkers);
 
     drawLinesBetweenMarkers(); // Redessiner les lignes dans le bon ordre
   }
@@ -92,86 +93,152 @@ void _filterMarkersByDate() {
       });
 
       // Charger les images après l'ajout du dossier
-      folderList.last.loadImages(context,
-      (marker) {
+      folderList.last.loadImages(context, (marker) {
         setState(() {
-          markers.add(marker);
-          totalImages = markers.length;
-          debugInfo.add('Image found: ${marker.image.name}');
+          allMarkers.add(marker);  // Ajouter aux marqueurs globaux
+          filteredMarkers.add(marker);  // Ajouter aux marqueurs affichés (au début identique)
+          totalImages = allMarkers.length;
+          _updateSliderRange();
+          
+          debugInfo.add("Image Found : " + marker.image.name);
         });
       }, () {
         setState(() {
           isLoading = true;
         });
-      },  () {
+      }, (imagesFound) {
+        setState(() {
+          totalImagesFound = totalImagesFound + imagesFound.length;
+        });
+      }, (NbImageAdd) {
         setState(() {
           isLoading = false;
-          sortMarkersByDate();
+          sortMarkersByDate(filteredMarkers);
           _updateSliderRange();
-          drawLinesBetweenMarkers(); // Redraw lines after sorting
+          drawLinesBetweenMarkers(); 
+          
+          debugInfo.add("$NbImageAdd images processed");
         });
       });
     }
   }
 
-  void sortMarkersByDate() {
-    markers.sort((a, b) {
-      DateTime? dateA = a.image.timestamp;
-      DateTime? dateB = b.image.timestamp;
+ void sortMarkersByDate(List<ImageMarker> listImageMarker) {
+  listImageMarker.sort((a, b) {
+    DateTime? dateA = a.image.timestamp;
+    DateTime? dateB = b.image.timestamp;
 
-      // Handle null timestamps
-      if (dateA == null && dateB == null) return 0; // Both are null, so they are equal
-      if (dateA == null) return 1; // Null should be treated as the latest/earliest
-      if (dateB == null) return -1;
+    if (dateA == null && dateB == null) return 0;
+    if (dateA == null) return 1; 
+    if (dateB == null) return -1; 
 
-      // Compare valid timestamps
-      return dateA.compareTo(dateB);
-    });
-  }
+    return dateA.compareTo(dateB);
+  });
 
-  void drawLinesBetweenMarkers() {
-    // Clear existing polylines before redrawing
+  // Mettre à jour les marqueurs affichés après le tri
+  //_filterMarkersByDate();
+}
+
+void drawLinesBetweenMarkers() {
+  setState(() {
     polylines.clear(); 
-      
-    for (var i = 0; i < markers.length - 1; i++) {
-      addPolyline(markers[i].marker.point, markers[i + 1].marker.point);
+    for (var i = 0; i < filteredMarkers.length - 1; i++) {
+      addPolyline(filteredMarkers[i].marker.point, filteredMarkers[i + 1].marker.point);
     }
-  }
+  });
+}
 
-  void addPolyline(LatLng start, LatLng end) {
-    setState(() {
-      polylines.add(Polyline(points: [start, end], strokeWidth: 4.0, color: Colors.red));
-    });
-  }
+void addPolyline(LatLng start, LatLng end) {
+  setState(() {
+    polylines.add(Polyline(points: [start, end], strokeWidth: 4.0, color: Colors.red));
+  });
+}
 
-  void _removeFolder(Folder folder) {
-    setState(() {
-      folderList.remove(folder); // Remove folder from list
-      // Retirer les marqueurs associés au dossier de la liste principale des marqueurs
-      markers = markers.where((marker) => !folder.markers.contains(marker)).toList();
-      totalImages = markers.length;
-      drawLinesBetweenMarkers();
-    });
-  }
+void _removeFolder(Folder folder) {
+  setState(() {
+    folderList.remove(folder); 
+    allMarkers = allMarkers.where((marker) => !folder.markers.contains(marker)).toList();
+    totalImages = allMarkers.length;
 
-  void _toggleSelection(int index) {
-    setState(() {
-      folderList[index].isSelected = !folderList[index].isSelected;
+    // Mettre à jour les marqueurs affichés après suppression
+    _filterMarkersByDate();
+    drawLinesBetweenMarkers();
+  });
+}
 
-      // Met à jour la liste des marqueurs affichés en fonction des dossiers sélectionnés
-      markers = folderList
-          .where((folder) => folder.isSelected)
-          .expand((folder) => folder.markers)
-          .toList();
+void _toggleSelection(int index) {
+  setState(() {
+    folderList[index].isSelected = !folderList[index].isSelected;
 
-      // Appeler la fonction pour trier les marqueurs après avoir mis à jour la liste
-      sortMarkersByDate();
-      _updateSliderRange();
-      drawLinesBetweenMarkers(); // Redraw lines after sorting
+    // Recalcule allMarkers avec seulement les dossiers sélectionnés
+    allMarkers = folderList
+        .where((folder) => folder.isSelected)
+        .expand((folder) => folder.markers)
+        .toList();
 
-      // Met à jour le nombre total d'images affichées
-      totalImages = markers.length;
-    });
+    _updateSliderRange();
+    _filterMarkersByDate();
+
+    totalImages = allMarkers.length;
+  });
+}
+
+  // Show image gallery in a popup
+  void _showImageGallery(List<ImageMarker> imageMarkers) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          content: Container(
+            width: 600,
+            height: 400,
+            child: Row(
+              children: [
+                // List of images on the left side
+                Container(
+                  width: 150,
+                  child: ListView.builder(
+                    itemCount: imageMarkers.length,
+                    itemBuilder: (context, index) {
+                      final imageMarker = imageMarkers[index];
+                      return GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            selectedImageMarker = imageMarker;
+                          });
+                        },
+                        child: Container(
+                          margin: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.blue),
+                          ),
+                          child: Image.memory(
+                            imageMarker.image.data,
+                            width: 50,
+                            height: 50,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                // Large preview of selected image on the right side
+                Expanded(
+                  child: selectedImageMarker == null
+                      ? Center(child: Text('Select an image'))
+                      : Image.memory(
+                          selectedImageMarker!.image.data,
+                          fit: BoxFit.cover,
+                        ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -243,7 +310,47 @@ void _filterMarkersByDate() {
                           padding: const EdgeInsets.only(top: 8.0),
                           child: LinearProgressIndicator(),
                         ),
-                      Text('Total Images: $totalImages', style: const TextStyle(fontSize: 16, color: Colors.black)),
+Tooltip(
+  message: "The total images found and displayed in the app depend on\nwhether they have the necessary metadata to be processed.",
+  child: Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Row(
+        children: [
+          Icon(Icons.image, color: Colors.blueAccent, size: 15),
+          SizedBox(width: 8),
+          Text(
+            "Images Visibles: ${filteredMarkers.length}",
+            style: TextStyle(fontSize: 12, color: Colors.black.withOpacity(0.7)),
+          ),
+        ],
+      ),
+      SizedBox(height: 8),
+      Row(
+        children: [
+          Icon(Icons.filter_list, color: Colors.blueAccent, size: 15),
+          SizedBox(width: 8),
+          Text(
+            "Images Processed: ${allMarkers.length}",
+            style: TextStyle(fontSize: 12, color: Colors.black.withOpacity(0.7)),
+          ),
+        ],
+      ),
+      SizedBox(height: 8),
+      Row(
+        children: [
+          Icon(Icons.visibility_off, color: Colors.blueAccent, size: 15),
+          SizedBox(width: 8),
+          Text(
+            "Images Unprocessed: ${(totalImagesFound - allMarkers.length)}",
+            style: TextStyle(fontSize: 12, color: Colors.black.withOpacity(0.7)),
+          ),
+        ],
+      ),
+    ],
+  ),
+)
+
                     ],
                   ),
                 ),
@@ -261,10 +368,29 @@ void _filterMarkersByDate() {
                         urlTemplate: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
                         subdomains: ['a', 'b', 'c'],
                       ),
-                      MarkerLayer(
-                        markers: markers.map((imageMarker) => imageMarker.marker).toList(),
-                      ),
                       PolylineLayer(polylines: polylines),
+                      MarkerClusterLayerWidget(
+                        options: MarkerClusterLayerOptions(
+                          maxClusterRadius: 50,
+                          size: const Size(40, 40),
+                          fitBoundsOptions: FitBoundsOptions(padding: EdgeInsets.all(50)),
+                          markers: filteredMarkers.map((imageMarker) => imageMarker.marker).toList(), // Utilise filteredMarkers
+                          builder: (context, markers) {
+                            return Container(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(20),
+                                color: Colors.blue.withOpacity(0.8),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  markers.length.toString(),
+                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
                     ],
                   ),
                 ),
