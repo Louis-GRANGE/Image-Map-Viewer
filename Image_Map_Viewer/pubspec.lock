@@ -408,6 +408,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.1.0"
+  range_slider_flutter:
+    dependency: "direct main"
+    description:
+      name: range_slider_flutter
+      sha256: ba7efe69101a100ac7d88db0d09610aea69c01d91cb853a5d423affb547607c3
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.0.2"
   sky_engine:
     dependency: transitive
     description: flutter

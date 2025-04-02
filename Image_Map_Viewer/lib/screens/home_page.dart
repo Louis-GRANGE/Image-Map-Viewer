@@ -4,6 +4,7 @@ import '../services/ImageMarker.dart';
 import 'package:latlong2/latlong.dart'; // For LatLng in flutter_map
 import 'package:file_picker/file_picker.dart';
 import '../services/folder.dart';
+import 'package:intl/intl.dart'; // Make sure this import is at the top
 
 class MyHomePage extends StatefulWidget {
   const MyHomePage({super.key, required this.title});
@@ -23,6 +24,59 @@ class _MyHomePageState extends State<MyHomePage> {
   
   // Liste pour stocker les chemins des images et informations pour le débogage
   List<String> debugInfo = [];
+  
+  // Slider values for range
+  RangeValues _currentRangeValues = RangeValues(20, 80);
+  
+  // To store the minimum and maximum slider values based on dates
+  double minSliderValue = 0.0;
+  double maxSliderValue = 100.0;
+  
+  // Function to find the minimum and maximum timestamps for the images
+  void _updateSliderRange() {
+    if (markers.isEmpty) return;
+
+    // Find the earliest and latest timestamps in markers
+    DateTime earliestDate = markers.first.image.timestamp!;
+    DateTime latestDate = markers.first.image.timestamp!;
+
+    for (var marker in markers) {
+      if (marker.image.timestamp!.isBefore(earliestDate)) {
+        earliestDate = marker.image.timestamp!;
+      }
+      if (marker.image.timestamp!.isAfter(latestDate)) {
+        latestDate = marker.image.timestamp!;
+      }
+    }
+
+    // Convert DateTime to Unix timestamp (milliseconds)
+    minSliderValue = earliestDate.millisecondsSinceEpoch.toDouble();
+    maxSliderValue = latestDate.millisecondsSinceEpoch.toDouble();
+
+    // Set initial slider values based on the dates
+    _currentRangeValues = RangeValues(
+      minSliderValue,
+      minSliderValue + (maxSliderValue - minSliderValue) * 0.5, // Example: set default end to mid-range
+    );
+  }
+
+void _filterMarkersByDate() {
+  markers = folderList
+      .where((folder) => folder.isSelected) // Garder seulement les dossiers sélectionnés
+      .expand((folder) => folder.markers) // Extraire les marqueurs
+      .where((marker) {
+        DateTime? date = marker.image.timestamp;
+        if (date == null) return false;
+
+        double timestamp = date.millisecondsSinceEpoch.toDouble();
+        return timestamp >= _currentRangeValues.start && timestamp <= _currentRangeValues.end;
+      })
+      .toList();
+
+    sortMarkersByDate();
+
+    drawLinesBetweenMarkers(); // Redessiner les lignes dans le bon ordre
+  }
 
   Future<void> _pickFolder() async {
     String? selectedFolder = await FilePicker.platform.getDirectoryPath();
@@ -53,13 +107,14 @@ class _MyHomePageState extends State<MyHomePage> {
         setState(() {
           isLoading = false;
           sortMarkersByDate();
+          _updateSliderRange();
+          drawLinesBetweenMarkers(); // Redraw lines after sorting
         });
       });
     }
   }
 
-void sortMarkersByDate() {
-  setState(() {
+  void sortMarkersByDate() {
     markers.sort((a, b) {
       DateTime? dateA = a.image.timestamp;
       DateTime? dateB = b.image.timestamp;
@@ -72,25 +127,18 @@ void sortMarkersByDate() {
       // Compare valid timestamps
       return dateA.compareTo(dateB);
     });
-
-    drawLinesBetweenMarkers(); // Redraw lines after sorting
-  });
-}
-
-
-  void drawLinesBetweenMarkers() {
-    setState(() {
-      // Clear existing polylines before redrawing
-      polylines.clear(); 
-      
-      for (var i = 0; i < markers.length - 1; i++) {
-        addPolyline(markers[i].marker.point, markers[i + 1].marker.point);
-      }
-    });
   }
 
-  void addPolyline(LatLng start, LatLng end)
-  {
+  void drawLinesBetweenMarkers() {
+    // Clear existing polylines before redrawing
+    polylines.clear(); 
+      
+    for (var i = 0; i < markers.length - 1; i++) {
+      addPolyline(markers[i].marker.point, markers[i + 1].marker.point);
+    }
+  }
+
+  void addPolyline(LatLng start, LatLng end) {
     setState(() {
       polylines.add(Polyline(points: [start, end], strokeWidth: 4.0, color: Colors.red));
     });
@@ -102,10 +150,9 @@ void sortMarkersByDate() {
       // Retirer les marqueurs associés au dossier de la liste principale des marqueurs
       markers = markers.where((marker) => !folder.markers.contains(marker)).toList();
       totalImages = markers.length;
+      drawLinesBetweenMarkers();
     });
-    drawLinesBetweenMarkers();
   }
-  
 
   void _toggleSelection(int index) {
     setState(() {
@@ -119,13 +166,13 @@ void sortMarkersByDate() {
 
       // Appeler la fonction pour trier les marqueurs après avoir mis à jour la liste
       sortMarkersByDate();
+      _updateSliderRange();
+      drawLinesBetweenMarkers(); // Redraw lines after sorting
 
       // Met à jour le nombre total d'images affichées
       totalImages = markers.length;
     });
   }
-  
-
 
   @override
   Widget build(BuildContext context) {
@@ -136,16 +183,16 @@ void sortMarkersByDate() {
           Expanded(
             child: Row(
               children: [
-                // Vertical panel for folder management on the left
+                // Folder management panel
                 Container(
-                  width: 300, // Adjust the width for the panel
+                  width: 300,
                   padding: const EdgeInsets.all(8.0),
-                  color: Colors.grey[200], // Light background color for the panel
+                  color: Colors.grey[200],
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       ElevatedButton(
-                        onPressed:  isLoading ? null : _pickFolder, // Disable the button when loading is true,
+                        onPressed: isLoading ? null : _pickFolder,
                         child: const Text('Add Folder'),
                       ),
                       const SizedBox(height: 20),
@@ -155,18 +202,18 @@ void sortMarkersByDate() {
                           itemBuilder: (context, index) {
                             final folder = folderList[index];
                             return GestureDetector(
-                              onTap:  isLoading ? null : () => _toggleSelection(index), // Disable folder selection while loading
+                              onTap: isLoading ? null : () => _toggleSelection(index),
                               child: Container(
                                 margin: const EdgeInsets.symmetric(vertical: 5),
                                 padding: const EdgeInsets.all(10),
                                 decoration: BoxDecoration(
                                   borderRadius: BorderRadius.circular(8),
                                   color: folder.isSelected
-                                      ? Colors.green.withOpacity(0.2) // Green background when selected
+                                      ? Colors.green.withOpacity(0.2)
                                       : Colors.transparent,
                                   border: Border.all(
                                     color: folder.isSelected ? Colors.green : Colors.transparent,
-                                    width: 2, // Border width
+                                    width: 2,
                                   ),
                                 ),
                                 child: Row(
@@ -176,15 +223,13 @@ void sortMarkersByDate() {
                                     IconButton(
                                       icon: Icon(
                                         Icons.delete,
-                                        color: isLoading ? Colors.grey : Colors.red, // Change color based on loading state
+                                        color: isLoading ? Colors.grey : Colors.red,
                                       ),
                                       onPressed: isLoading
-                                          ? null  // Disable the button if loading is true
+                                          ? null
                                           : () {
-                                              _removeFolder(folder); // Remove folder when delete icon is pressed
+                                              _removeFolder(folder);
                                             },
-                                      splashColor: Colors.transparent, // Remove splash effect when disabled
-                                      highlightColor: Colors.transparent, // Remove highlight effect when disabled
                                     ),
                                   ],
                                 ),
@@ -196,41 +241,71 @@ void sortMarkersByDate() {
                       if (isLoading)
                         Padding(
                           padding: const EdgeInsets.only(top: 8.0),
-                          child: LinearProgressIndicator(), // Show loading bar when processing
+                          child: LinearProgressIndicator(),
                         ),
                       Text('Total Images: $totalImages', style: const TextStyle(fontSize: 16, color: Colors.black)),
                     ],
                   ),
                 ),
-                // Expanded widget for the map on the right
+                // Map view
                 Expanded(
                   child: FlutterMap(
                     options: MapOptions(
-                      center: mapCenter, // Update map center dynamically
+                      center: mapCenter,
                       zoom: 2.0,
-                      minZoom: 2.0, // Minimum zoom level
-                      maxZoom: 18.0, // Maximum zoom level (adjust according to your need)
+                      minZoom: 2.0,
+                      maxZoom: 18.0,
                     ),
                     children: [
                       TileLayer(
                         urlTemplate: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
                         subdomains: ['a', 'b', 'c'],
-                      ),MarkerLayer(
+                      ),
+                      MarkerLayer(
                         markers: markers.map((imageMarker) => imageMarker.marker).toList(),
                       ),
-                      PolylineLayer(polylines: polylines)
+                      PolylineLayer(polylines: polylines),
                     ],
+                  ),
+                ),
+                // Vertical range slider
+                Container(
+                  width: 80,
+                  padding: const EdgeInsets.symmetric(vertical: 20),
+                  child: RotatedBox(
+                    quarterTurns: 3,
+                    child: RangeSlider(
+                      values: _currentRangeValues,
+                      min: minSliderValue,
+                      max: maxSliderValue,
+                      divisions: 100,
+                      labels: RangeLabels(
+                        DateFormat('yyyy-MM-dd').format(
+                          DateTime.fromMillisecondsSinceEpoch(_currentRangeValues.start.round().toInt())
+                        ),
+                        DateFormat('yyyy-MM-dd').format(
+                          DateTime.fromMillisecondsSinceEpoch(_currentRangeValues.end.round().toInt())
+                        ),
+                      ),
+
+                      onChanged: (RangeValues values) {
+                        setState(() {
+                          _currentRangeValues = values;
+                          _filterMarkersByDate();
+                        });
+                      },
+                    ),
                   ),
                 ),
               ],
             ),
           ),
-          // Small debug info display at the bottom
+          // Debug info
           Container(
             padding: const EdgeInsets.all(0),
             color: Colors.white,
             child: Text(
-              debugInfo.isNotEmpty ? debugInfo.last : "", // Affiche les informations de débogage
+              debugInfo.isNotEmpty ? debugInfo.last : "",
               style: const TextStyle(color: Colors.black, fontSize: 10),
             ),
           ),
