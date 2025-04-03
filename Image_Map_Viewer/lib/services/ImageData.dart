@@ -1,19 +1,22 @@
 import 'dart:typed_data';
+import 'package:Image_Map_Viewer/services/CountryStayTracker.dart';
 import 'package:latlong2/latlong.dart'; // For LatLng in flutter_map
 
 class ImageData {
   final Uint8List data;
   final String path;
   final String name;
-  final DateTime? timestamp;
-  final LatLng? location;
+  final DateTime timestamp;
+  final LatLng location;
+  final CountryInfo country;
 
   ImageData({
     required this.data,
     required this.path,
     required this.name,
-    this.timestamp,
-    this.location,
+    required this.timestamp,
+    required this.location,
+    required this.country,
   });
 
   /// Factory constructor to create an ImageData object from a Map
@@ -23,7 +26,8 @@ class ImageData {
       path: map['path'] as String,
       name: map['name'] as String,
       timestamp: map['timestamp'],
-      location: map['location'] != null ? map['location'] as LatLng : null,
+      location: map['location'],
+      country: map['country'] ?? "",
     );
   }
 
@@ -33,8 +37,9 @@ class ImageData {
       'data': data,
       'path': path,
       'name': name,
-      'timestamp': timestamp?.toIso8601String(),
+      'timestamp': timestamp.toIso8601String(),
       'location': location,
+      'country': country,
     };
   }
 

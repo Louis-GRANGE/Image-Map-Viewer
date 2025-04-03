@@ -30,13 +30,13 @@ class Folder {
     );
   }
 
-  Future<void> loadImages(BuildContext context, Function(ImageMarker) onMarkerAdded, Function() onStartLoading, Function(List<Map<String, dynamic>>) onImagesFound, Function(int) onEndLoading) async {
+  Future<void> loadImages(BuildContext context, Function(ImageMarker) onMarkerAdded, Function() onStartLoading, Function(List<Map<String, dynamic>>) onAllImagesFound, Function(int) onEndLoading) async {
     onStartLoading();
     List<Map<String, dynamic>> images = await ImagePickerService.getAllImagesFromFolder(path);
     LatLng? firstLatLng;
     int NbImageAdd = 0;
 
-    onImagesFound(images);
+    onAllImagesFound(images);
 
     for (var image in images) {
       final imageData = image['data'] as Uint8List;

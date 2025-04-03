@@ -2,7 +2,9 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart'; // flutter_map package
-import 'package:latlong2/latlong.dart'; // For LatLng in flutter_map
+import 'package:latlong2/latlong.dart';
+
+import '../services/ImageMarker.dart'; // For LatLng in flutter_map
 
 class MarkerHelper {
   // Method to create a custom marker as a Widget for flutter_map
@@ -42,16 +44,29 @@ class MarkerHelper {
     final customIconWidget = await createCustomMarkerIcon(imageBytes);
 
     return Marker(
-      width: 50, // Marker width
-      height: 50, // Marker height
+      width: 50, // Largeur du marker
+      height: 50, // Hauteur du marker
       point: position,
-      builder: (ctx) => GestureDetector(
+      child: GestureDetector(
         onTap: () {
-          // Trigger popup when the marker is tapped
+          // Afficher une popup lorsque le marker est cliqué
           showPopup(context, imageBytes);
         },
-        child: customIconWidget, // Display the custom marker icon
+        child: customIconWidget, // Affichage de l'icône personnalisée du marker
       ),
     );
   }
+
+  static void sortMarkersByDate(List<ImageMarker> listImageMarker) {
+  listImageMarker.sort((a, b) {
+    DateTime? dateA = a.image.timestamp;
+    DateTime? dateB = b.image.timestamp;
+
+    if (dateA == null && dateB == null) return 0;
+    if (dateA == null) return 1; 
+    if (dateB == null) return -1; 
+
+    return dateA.compareTo(dateB);
+  });
+}
 }

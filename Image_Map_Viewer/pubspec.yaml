@@ -32,16 +32,21 @@ dependencies:
     sdk: flutter
   file_picker: ^9.2.3
   range_slider_flutter: ^0.0.2
-
-dev_dependencies:
-  flutter_test:
-    sdk: flutter
-  flutter_map: ^5.0.0
+  flutter_map: ^7.0.0
+  flutter_map_geojson: ^1.0.8
+  geojson_vi: ^2.2.5
+  geolocator: ^9.0.0
   flutter_map_marker_cluster: ^1.2.0
   latlong2: ^0.9.1
   image_picker: ^0.8.7+3
   exif: ^2.0.0
   image: ^3.0.1
+  country_flags: ^2.0.0
+  
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
   #flutter_map: ^4.0.0
   #latlong2: ^0.9.1
   
@@ -57,6 +62,8 @@ dev_dependencies:
 
 # The following section is specific to Flutter packages.
 flutter:
+  assets:
+    - assets/countries.geojson
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in

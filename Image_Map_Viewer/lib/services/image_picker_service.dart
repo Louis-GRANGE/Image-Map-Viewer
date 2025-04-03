@@ -1,7 +1,9 @@
 import 'dart:io';
 import 'dart:typed_data';
+
 import '../services/exif_service.dart';
 import 'package:path/path.dart' as path;
+import 'CountryStayTracker.dart';
 
 class ImagePickerService {
   // Retrieves all images from a folder (including subfolders) and extracts metadata
@@ -42,18 +44,24 @@ class ImagePickerService {
     try {
       Uint8List imageData = await file.readAsBytes();  // Read image as bytes
       final latLng = await ExifService.getCoordinatesFromImage(imageData);
+      CountryInfo country = CountryInfo("Unknown", "??");
+      if(latLng != null)
+        country = CountryStayTracker.getCountryFromCoordinates(latLng);
       final timestamp = await ExifService.getDateFromImage(imageData); // Extract timestamp
       String imageName = file.uri.pathSegments.last; // Extract filename
-
-      images.add({
+      Map<String, dynamic> image = 
+      {
         'data': imageData,
         'location': latLng,
+        'country' : country,
         'timestamp': timestamp,
         'name': imageName,
         'path': file.path,
-      });
+      };
+      
+      images.add(image);
 
-      print('Image found: ${file.path}, Timestamp: $timestamp');
+      print('Image found: ${file.path}, Timestamp: $timestamp, Country: ${country.name}');
     } catch (e) {
       print('Error loading image: ${file.path}, Error: $e');
     }

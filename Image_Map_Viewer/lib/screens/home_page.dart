@@ -1,11 +1,15 @@
+import 'package:Image_Map_Viewer/widget/CountryStayWidget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart'; // flutter_map package
+import '../helpers/marker_helper.dart';
 import '../services/ImageMarker.dart';
 import 'package:latlong2/latlong.dart'; // For LatLng in flutter_map
 import 'package:flutter_map_marker_cluster/flutter_map_marker_cluster.dart';
 import 'package:file_picker/file_picker.dart';
+import '../services/CountryStayTracker.dart';
 import '../services/folder.dart';
-import 'package:intl/intl.dart'; // Make sure this import is at the top
+
+import '../widget/DateSliderFilter.dart'; // Make sure this import is at the top
 
 class MyHomePage extends StatefulWidget {
   const MyHomePage({super.key, required this.title});
@@ -39,6 +43,32 @@ class _MyHomePageState extends State<MyHomePage> {
   // To store the minimum and maximum slider values based on dates
   double minSliderValue = 0.0;
   double maxSliderValue = 100.0;
+
+  // New variable to store the country stay durations
+  Map<CountryInfo, int> countryStayDurations = {CountryInfo("France", "FR") : 1};
+
+  @override
+  void initState() {
+    super.initState();
+    
+    // Charger les informations nécessaires au démarrage
+    _initializeApp();
+  }
+
+  void _initializeApp() async {
+    setState(() {
+      isLoading = true;
+    });
+
+    // Charger les marqueurs, les fichiers GeoJSON, ou toute autre donnée requise
+    await CountryStayTracker.loadGeoJson(); // Exemple de chargement
+    _updateSliderRange();
+    _filterMarkersByDate();
+
+    setState(() {
+      isLoading = false;
+    });
+  }
   
   // Function to find the minimum and maximum timestamps for the images
 void _updateSliderRange() {
@@ -64,19 +94,78 @@ void _updateSliderRange() {
   _currentRangeValues = RangeValues(minSliderValue,maxSliderValue);
 }
 
-void _filterMarkersByDate() {
-  filteredMarkers = allMarkers
-    .where((marker) {
-      DateTime? date = marker.image.timestamp;
-      if (date == null) return false;
-      double timestamp = date.millisecondsSinceEpoch.toDouble();
-      return timestamp >= _currentRangeValues.start && timestamp <= _currentRangeValues.end;
-    })
-    .toList();
+Map<CountryInfo, int> calculateStayDurations(List<ImageMarker> _markers)
+{
+  MarkerHelper.sortMarkersByDate(_markers);
+  Map<CountryInfo, int> _countryStayDurations = {};
+  DateTime? lastDate;
 
-    sortMarkersByDate(filteredMarkers);
+  for (var i = 0; i < _markers.length - 1; i++) {
+    String country = _markers[i].image.country.name;
+    String countryNext = _markers[i + 1].image.country.name;
+    DateTime timestamp = _markers[i].image.timestamp;
+    DateTime timestampNext = _markers[i + 1].image.timestamp;
 
-    drawLinesBetweenMarkers(); // Redessiner les lignes dans le bon ordre
+    // Convertir les timestamps en date sans l'heure pour comparer uniquement les jours
+    DateTime dateOnly = DateTime(timestamp.year, timestamp.month, timestamp.day);
+    DateTime nextDateOnly = DateTime(timestampNext.year, timestampNext.month, timestampNext.day);
+
+    int stayDuration = nextDateOnly.difference(dateOnly).inDays;
+    CountryInfo countryinfo = CountryInfo.withName(country);
+    CountryInfo countryinfonext = CountryInfo.withName(countryNext);
+
+    // Si le pays est different, on répartit la durée entre les deux pays
+    if (countryNext != null && countryNext != country) {
+      int halfDuration = (stayDuration / 2).round();
+      // Répartition pour le pays actuel
+      if (_countryStayDurations.containsKey(countryinfo!)) {
+        _countryStayDurations[countryinfo!] = _countryStayDurations[countryinfo!]! + halfDuration;
+      } else {
+        _countryStayDurations[countryinfo!] = halfDuration;
+      }
+
+      // Répartition pour le pays suivant
+      if (_countryStayDurations.containsKey(countryinfonext)) {
+        _countryStayDurations[countryinfonext] = _countryStayDurations[countryinfonext]! + halfDuration;
+      } else {
+        _countryStayDurations[countryinfonext] = halfDuration;
+      }
+    } else {
+      // Si le pays n'a pas changé, on ajoute la durée complète
+      if (_countryStayDurations.containsKey(countryinfo)) {
+        _countryStayDurations[countryinfo] = _countryStayDurations[countryinfo]! + stayDuration;
+      } else {
+        _countryStayDurations[countryinfo] = stayDuration;
+      }
+    }
+
+    // Mettre à jour la dernière date et le dernier pays
+    lastDate = nextDateOnly;
+  }
+
+  // Traiter la dernière photo, qui n'a pas de photo suivante pour calculer la durée
+  if (_markers.isNotEmpty) {
+    String lastCountry = _markers.last.image.country.name;
+    CountryInfo lastcountryinfo = CountryInfo.withName(lastCountry);
+    DateTime lastTimestamp = _markers.last.image.timestamp;
+    DateTime lastDateOnly = DateTime(lastTimestamp.year, lastTimestamp.month, lastTimestamp.day);
+
+    if (_countryStayDurations.containsKey(lastcountryinfo)) {
+      _countryStayDurations[lastcountryinfo] = _countryStayDurations[lastcountryinfo]! + 1;
+    } else {
+      _countryStayDurations[lastcountryinfo] = 1;
+    }
+  }
+
+  return _countryStayDurations;
+}
+
+
+
+  void _filterMarkersByDate() {
+    filteredMarkers = DateSliderFilter.filterMarkersByDate(allMarkers, _currentRangeValues);
+    countryStayDurations = calculateStayDurations(filteredMarkers);
+    drawLinesBetweenMarkers();
   }
 
   Future<void> _pickFolder() async {
@@ -99,7 +188,7 @@ void _filterMarkersByDate() {
           filteredMarkers.add(marker);  // Ajouter aux marqueurs affichés (au début identique)
           totalImages = allMarkers.length;
           _updateSliderRange();
-          
+          countryStayDurations = calculateStayDurations(filteredMarkers);
           debugInfo.add("Image Found : " + marker.image.name);
         });
       }, () {
@@ -113,31 +202,13 @@ void _filterMarkersByDate() {
       }, (NbImageAdd) {
         setState(() {
           isLoading = false;
-          sortMarkersByDate(filteredMarkers);
           _updateSliderRange();
-          drawLinesBetweenMarkers(); 
-          
+          _filterMarkersByDate();
           debugInfo.add("$NbImageAdd images processed");
         });
       });
     }
   }
-
- void sortMarkersByDate(List<ImageMarker> listImageMarker) {
-  listImageMarker.sort((a, b) {
-    DateTime? dateA = a.image.timestamp;
-    DateTime? dateB = b.image.timestamp;
-
-    if (dateA == null && dateB == null) return 0;
-    if (dateA == null) return 1; 
-    if (dateB == null) return -1; 
-
-    return dateA.compareTo(dateB);
-  });
-
-  // Mettre à jour les marqueurs affichés après le tri
-  //_filterMarkersByDate();
-}
 
 void drawLinesBetweenMarkers() {
   setState(() {
@@ -162,7 +233,6 @@ void _removeFolder(Folder folder) {
 
     // Mettre à jour les marqueurs affichés après suppression
     _filterMarkersByDate();
-    drawLinesBetweenMarkers();
   });
 }
 
@@ -250,9 +320,9 @@ void _toggleSelection(int index) {
           Expanded(
             child: Row(
               children: [
-                // Folder management panel
+                // Panel de gestion des dossiers
                 Container(
-                  width: 300,
+                  width: 200,
                   padding: const EdgeInsets.all(8.0),
                   color: Colors.grey[200],
                   child: Column(
@@ -310,81 +380,84 @@ void _toggleSelection(int index) {
                           padding: const EdgeInsets.only(top: 8.0),
                           child: LinearProgressIndicator(),
                         ),
-Tooltip(
-  message: "The total images found and displayed in the app depend on\nwhether they have the necessary metadata to be processed.",
-  child: Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Row(
-        children: [
-          Icon(Icons.image, color: Colors.blueAccent, size: 15),
-          SizedBox(width: 8),
-          Text(
-            "Images Visibles: ${filteredMarkers.length}",
-            style: TextStyle(fontSize: 12, color: Colors.black.withOpacity(0.7)),
-          ),
-        ],
-      ),
-      SizedBox(height: 8),
-      Row(
-        children: [
-          Icon(Icons.filter_list, color: Colors.blueAccent, size: 15),
-          SizedBox(width: 8),
-          Text(
-            "Images Processed: ${allMarkers.length}",
-            style: TextStyle(fontSize: 12, color: Colors.black.withOpacity(0.7)),
-          ),
-        ],
-      ),
-      SizedBox(height: 8),
-      Row(
-        children: [
-          Icon(Icons.visibility_off, color: Colors.blueAccent, size: 15),
-          SizedBox(width: 8),
-          Text(
-            "Images Unprocessed: ${(totalImagesFound - allMarkers.length)}",
-            style: TextStyle(fontSize: 12, color: Colors.black.withOpacity(0.7)),
-          ),
-        ],
-      ),
-    ],
-  ),
-)
-
+                      Tooltip(
+                        message: "The total images found and displayed in the app depend on\nwhether they have the necessary metadata to be processed.",
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(Icons.image, color: Colors.blueAccent, size: 15),
+                                SizedBox(width: 8),
+                                Text(
+                                  "Images Visibles: ${filteredMarkers.length}",
+                                  style: TextStyle(fontSize: 12, color: Colors.black.withOpacity(0.7)),
+                                ),
+                              ],
+                            ),
+                            SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Icon(Icons.filter_list, color: Colors.blueAccent, size: 15),
+                                SizedBox(width: 8),
+                                Text(
+                                  "Images Processed: ${allMarkers.length}",
+                                  style: TextStyle(fontSize: 12, color: Colors.black.withOpacity(0.7)),
+                                ),
+                              ],
+                            ),
+                            SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Icon(Icons.visibility_off, color: Colors.blueAccent, size: 15),
+                                SizedBox(width: 8),
+                                Text(
+                                  "Images Unprocessed: ${(totalImagesFound - allMarkers.length)}",
+                                  style: TextStyle(fontSize: 12, color: Colors.black.withOpacity(0.7)),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
                 ),
-                // Map view
+                // Carte avec marqueurs
                 Expanded(
                   child: FlutterMap(
                     options: MapOptions(
-                      center: mapCenter,
-                      zoom: 2.0,
                       minZoom: 2.0,
                       maxZoom: 18.0,
+                      initialCenter: mapCenter,
+                      initialZoom: 2.0,
                     ),
                     children: [
                       TileLayer(
-                        urlTemplate: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-                        subdomains: ['a', 'b', 'c'],
+                        urlTemplate: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
                       ),
                       PolylineLayer(polylines: polylines),
                       MarkerClusterLayerWidget(
                         options: MarkerClusterLayerOptions(
                           maxClusterRadius: 50,
                           size: const Size(40, 40),
-                          fitBoundsOptions: FitBoundsOptions(padding: EdgeInsets.all(50)),
-                          markers: filteredMarkers.map((imageMarker) => imageMarker.marker).toList(), // Utilise filteredMarkers
+                          markers: filteredMarkers.map((imageMarker) => imageMarker.marker).toList(),
                           builder: (context, markers) {
-                            return Container(
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(20),
-                                color: Colors.blue.withOpacity(0.8),
-                              ),
-                              child: Center(
-                                child: Text(
-                                  markers.length.toString(),
-                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                            return GestureDetector(
+                              onTap: () {
+                                // Show the image gallery when a cluster is tapped
+                                _showImageGallery(filteredMarkers);
+                              },
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(20),
+                                  color: Colors.blue.withOpacity(0.8),
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    markers.length.toString(),
+                                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                                  ),
                                 ),
                               ),
                             );
@@ -394,35 +467,20 @@ Tooltip(
                     ],
                   ),
                 ),
-                // Vertical range slider
-                Container(
-                  width: 80,
-                  padding: const EdgeInsets.symmetric(vertical: 20),
-                  child: RotatedBox(
-                    quarterTurns: 3,
-                    child: RangeSlider(
-                      values: _currentRangeValues,
-                      min: minSliderValue,
-                      max: maxSliderValue,
-                      divisions: 100,
-                      labels: RangeLabels(
-                        DateFormat('yyyy-MM-dd').format(
-                          DateTime.fromMillisecondsSinceEpoch(_currentRangeValues.start.round().toInt())
-                        ),
-                        DateFormat('yyyy-MM-dd').format(
-                          DateTime.fromMillisecondsSinceEpoch(_currentRangeValues.end.round().toInt())
-                        ),
-                      ),
-
-                      onChanged: (RangeValues values) {
-                        setState(() {
-                          _currentRangeValues = values;
-                          _filterMarkersByDate();
-                        });
-                      },
-                    ),
-                  ),
+                // Range Slider
+                DateSliderFilter(
+                  currentRangeValues: _currentRangeValues,
+                  minSliderValue: minSliderValue,
+                  maxSliderValue: maxSliderValue,
+                  onChanged: (RangeValues values) {
+                    setState(() {
+                      _currentRangeValues = values;
+                      _filterMarkersByDate();
+                    });
+                  },
                 ),
+                CountryStayWidget(
+                    countryStayDurations: countryStayDurations),
               ],
             ),
           ),
