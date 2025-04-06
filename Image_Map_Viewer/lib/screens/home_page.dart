@@ -1,3 +1,4 @@
+import 'package:Image_Map_Viewer/services/ConnectivityPlus.dart';
 import 'package:Image_Map_Viewer/widget/CountryStayWidget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart'; // flutter_map package
@@ -30,6 +31,8 @@ class _MyHomePageState extends State<MyHomePage> {
   LatLng mapCenter = LatLng(0, 0); // Default map center
   bool isLoading = false; // Track loading state
 
+  bool isOnline = true;
+
     
   // To store the currently selected image
   ImageMarker? selectedImageMarker;
@@ -43,6 +46,8 @@ class _MyHomePageState extends State<MyHomePage> {
   // To store the minimum and maximum slider values based on dates
   double minSliderValue = 0.0;
   double maxSliderValue = 100.0;
+
+  List<CountryInfo> selectedCountries = [];
 
   // New variable to store the country stay durations
   Map<CountryInfo, int> countryStayDurations = {CountryInfo("France", "FR") : 1};
@@ -62,14 +67,24 @@ class _MyHomePageState extends State<MyHomePage> {
 
     // Charger les marqueurs, les fichiers GeoJSON, ou toute autre donnée requise
     await CountryStayTracker.loadGeoJson(); // Exemple de chargement
+    isOnline = await ConnectivityPlus.hasInternetConnection();
+
+    if (!isOnline)
+    {
+      print("🛑 No internet. Drawing all countries...");
+    }
+    else
+    {
+      print("✅ Internet available.");
+    }
     _updateSliderRange();
-    _filterMarkersByDate();
+    _updateFilters();
 
     setState(() {
       isLoading = false;
     });
   }
-  
+
   // Function to find the minimum and maximum timestamps for the images
 void _updateSliderRange() {
   if (allMarkers.isEmpty) return; // Utilisation des marqueurs filtrés
@@ -98,7 +113,6 @@ Map<CountryInfo, int> calculateStayDurations(List<ImageMarker> _markers)
 {
   MarkerHelper.sortMarkersByDate(_markers);
   Map<CountryInfo, int> _countryStayDurations = {};
-  DateTime? lastDate;
 
   for (var i = 0; i < _markers.length - 1; i++) {
     String country = _markers[i].image.country.name;
@@ -110,18 +124,18 @@ Map<CountryInfo, int> calculateStayDurations(List<ImageMarker> _markers)
     DateTime dateOnly = DateTime(timestamp.year, timestamp.month, timestamp.day);
     DateTime nextDateOnly = DateTime(timestampNext.year, timestampNext.month, timestampNext.day);
 
-    int stayDuration = nextDateOnly.difference(dateOnly).inDays;
+    int stayDuration = nextDateOnly.difference(dateOnly).inDays; 
     CountryInfo countryinfo = CountryInfo.withName(country);
     CountryInfo countryinfonext = CountryInfo.withName(countryNext);
 
     // Si le pays est different, on répartit la durée entre les deux pays
-    if (countryNext != null && countryNext != country) {
+    if (countryNext != country) {
       int halfDuration = (stayDuration / 2).round();
       // Répartition pour le pays actuel
-      if (_countryStayDurations.containsKey(countryinfo!)) {
-        _countryStayDurations[countryinfo!] = _countryStayDurations[countryinfo!]! + halfDuration;
+      if (_countryStayDurations.containsKey(countryinfo)) {
+        _countryStayDurations[countryinfo] = _countryStayDurations[countryinfo]! + halfDuration;
       } else {
-        _countryStayDurations[countryinfo!] = halfDuration;
+        _countryStayDurations[countryinfo] = halfDuration;
       }
 
       // Répartition pour le pays suivant
@@ -138,17 +152,12 @@ Map<CountryInfo, int> calculateStayDurations(List<ImageMarker> _markers)
         _countryStayDurations[countryinfo] = stayDuration;
       }
     }
-
-    // Mettre à jour la dernière date et le dernier pays
-    lastDate = nextDateOnly;
   }
 
   // Traiter la dernière photo, qui n'a pas de photo suivante pour calculer la durée
   if (_markers.isNotEmpty) {
     String lastCountry = _markers.last.image.country.name;
     CountryInfo lastcountryinfo = CountryInfo.withName(lastCountry);
-    DateTime lastTimestamp = _markers.last.image.timestamp;
-    DateTime lastDateOnly = DateTime(lastTimestamp.year, lastTimestamp.month, lastTimestamp.day);
 
     if (_countryStayDurations.containsKey(lastcountryinfo)) {
       _countryStayDurations[lastcountryinfo] = _countryStayDurations[lastcountryinfo]! + 1;
@@ -160,12 +169,22 @@ Map<CountryInfo, int> calculateStayDurations(List<ImageMarker> _markers)
   return _countryStayDurations;
 }
 
-
-
-  void _filterMarkersByDate() {
-    filteredMarkers = DateSliderFilter.filterMarkersByDate(allMarkers, _currentRangeValues);
+  void _updateFilters()
+  {
+    filteredMarkers = allMarkers;
+    filteredMarkers = _filterMarkersByDate(filteredMarkers);
     countryStayDurations = calculateStayDurations(filteredMarkers);
+    filteredMarkers = _filterSelectedCountries(filteredMarkers);
     drawLinesBetweenMarkers();
+  }
+
+  List<ImageMarker> _filterSelectedCountries(List<ImageMarker> markers)
+  {
+    return CountryStayTracker.filterMarkersByCountry(markers, selectedCountries);
+  }
+
+  List<ImageMarker> _filterMarkersByDate(List<ImageMarker> markers) {
+    return DateSliderFilter.filterMarkersByDate(markers, _currentRangeValues);
   }
 
   Future<void> _pickFolder() async {
@@ -199,12 +218,13 @@ Map<CountryInfo, int> calculateStayDurations(List<ImageMarker> _markers)
         setState(() {
           totalImagesFound = totalImagesFound + imagesFound.length;
         });
-      }, (NbImageAdd) {
+      }, (NewsMarkerAdded) {
         setState(() {
           isLoading = false;
+          selectedCountries = NewsMarkerAdded.map((marker) => marker.image.country).toSet().toList();   
           _updateSliderRange();
-          _filterMarkersByDate();
-          debugInfo.add("$NbImageAdd images processed");
+          _updateFilters();
+          debugInfo.add("${NewsMarkerAdded.length} images processed");
         });
       });
     }
@@ -232,7 +252,7 @@ void _removeFolder(Folder folder) {
     totalImages = allMarkers.length;
 
     // Mettre à jour les marqueurs affichés après suppression
-    _filterMarkersByDate();
+    _updateFilters();
   });
 }
 
@@ -247,69 +267,134 @@ void _toggleSelection(int index) {
         .toList();
 
     _updateSliderRange();
-    _filterMarkersByDate();
+    _updateFilters();
 
     totalImages = allMarkers.length;
   });
 }
 
-  // Show image gallery in a popup
-  void _showImageGallery(List<ImageMarker> imageMarkers) {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          content: Container(
-            width: 600,
-            height: 400,
-            child: Row(
-              children: [
-                // List of images on the left side
-                Container(
-                  width: 150,
-                  child: ListView.builder(
-                    itemCount: imageMarkers.length,
-                    itemBuilder: (context, index) {
-                      final imageMarker = imageMarkers[index];
-                      return GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            selectedImageMarker = imageMarker;
-                          });
-                        },
-                        child: Container(
-                          margin: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.blue),
-                          ),
-                          child: Image.memory(
-                            imageMarker.image.data,
-                            width: 50,
-                            height: 50,
-                            fit: BoxFit.cover,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-                // Large preview of selected image on the right side
-                Expanded(
-                  child: selectedImageMarker == null
-                      ? Center(child: Text('Select an image'))
-                      : Image.memory(
-                          selectedImageMarker!.image.data,
-                          fit: BoxFit.cover,
-                        ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
+String shortenPathMiddle(String path, int maxLength) {
+  if (path.length <= maxLength) return path;
+
+  final regex = RegExp(r'^.*?[\\/]'); // capture drive/root like C:\ or /
+  final match = regex.firstMatch(path);
+  final root = match?.group(0) ?? '';
+  final end = path.substring(root.length);
+
+  // Reserve space for root + ellipsis
+  const ellipsis = '...';
+  final reserved = root.length + ellipsis.length;
+  final endMaxLength = maxLength - reserved;
+
+  if (endMaxLength <= 0) {
+    // If even the root + ellipsis exceeds limit, just truncate path
+    return path.substring(path.length - maxLength);
   }
+
+  final endPart = end.length > endMaxLength
+      ? end.substring(end.length - endMaxLength)
+      : end;
+
+  return '$root$ellipsis$endPart';
+}
+
+
+  // Show image gallery in a popup
+void _showImageGallery(List<ImageMarker> imageMarkers) {
+  ImageMarker? localSelectedMarker = selectedImageMarker; // Copie locale
+
+  showDialog(
+    context: context,
+    builder: (context) {
+      final screenSize = MediaQuery.of(context).size;
+      final dialogWidth = screenSize.width * 0.8;
+      final dialogHeight = screenSize.height * 0.7;
+
+      return AlertDialog(
+        content: StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return Container(
+              width: dialogWidth,
+              height: dialogHeight,
+              child: Row(
+                children: [
+                  // Liste d'images à gauche
+                  Container(
+                    width: 150,
+                    child: ListView.builder(
+                      itemCount: imageMarkers.length,
+                      itemBuilder: (context, index) {
+                        final imageMarker = imageMarkers[index];
+                        return GestureDetector(
+                          onTap: () {
+                            setStateDialog(() {
+                              localSelectedMarker = imageMarker;
+                            });
+                          },
+                          child: Container(
+                            margin: const EdgeInsets.all(2),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(
+                                color: imageMarker == localSelectedMarker ? Colors.green : Colors.blue,
+                                width: imageMarker == localSelectedMarker ? 3 : 1.5,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.2),
+                                  blurRadius: 8,
+                                  offset: Offset(4, 4),
+                                ),
+                                BoxShadow(
+                                  color: Colors.white.withOpacity(0.1),
+                                  blurRadius: 8,
+                                  offset: Offset(-4, -4),
+                                ),
+                              ],
+                            ),
+                            child: Image.memory(
+                              imageMarker.image.data,
+                              width: 50,
+                              height: 50,
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  // Affichage de l'image sélectionnée à droite
+                  Expanded(
+                    child: localSelectedMarker == null
+                        ? Center(child: Text('Select an image'))
+                        : Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Expanded(
+                                child: Image.memory(
+                                  localSelectedMarker!.image.data,
+                                  fit: BoxFit.scaleDown,
+                                ),
+                              ),
+                              SizedBox(height: 8),
+                              Text(
+                                localSelectedMarker!.image.name,
+                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      );
+    },
+  );
+}
+
 
   @override
   Widget build(BuildContext context) {
@@ -356,7 +441,20 @@ void _toggleSelection(int index) {
                                 child: Row(
                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
-                                    Text(folder.path),
+                                    Expanded(
+                                      child: Tooltip(
+                                        message: folder.path,
+                                        child: Text(
+                                          shortenPathMiddle(folder.path, 35),
+                                          overflow: TextOverflow.ellipsis,
+                                          maxLines: 2,
+                                          textAlign: TextAlign.left,
+                                          textDirection: TextDirection.rtl,
+                                          softWrap: true,
+                                          style: const TextStyle(fontSize: 12),
+                                        ),
+                                      ),
+                                    ),
                                     IconButton(
                                       icon: Icon(
                                         Icons.delete,
@@ -423,6 +521,7 @@ void _toggleSelection(int index) {
                     ],
                   ),
                 ),
+                
                 // Carte avec marqueurs
                 Expanded(
                   child: FlutterMap(
@@ -436,17 +535,32 @@ void _toggleSelection(int index) {
                       TileLayer(
                         urlTemplate: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
                       ),
+                      if(!isOnline)
+                        PolygonLayer(
+                          polygons: CountryStayTracker.getPolygonsForOfflineMap(),
+                        ),
+                      PolygonLayer(
+                        polygons: CountryStayTracker.getPolygonsFromSelectedCountries(selectedCountries),
+                      ),
                       PolylineLayer(polylines: polylines),
                       MarkerClusterLayerWidget(
                         options: MarkerClusterLayerOptions(
                           maxClusterRadius: 50,
-                          size: const Size(40, 40),
+                          size: const Size(30, 30),
                           markers: filteredMarkers.map((imageMarker) => imageMarker.marker).toList(),
                           builder: (context, markers) {
                             return GestureDetector(
                               onTap: () {
-                                // Show the image gallery when a cluster is tapped
-                                _showImageGallery(filteredMarkers);
+                                // Lorsque le cluster est tapé, on extrait les marqueurs
+                                // Utilise `markers` pour obtenir la liste des marqueurs dans ce cluster
+                                
+                                // Filtrer les images en fonction des marqueurs dans ce cluster
+                                List<ImageMarker> clusterImages = filteredMarkers.where((imageMarker) {
+                                  return markers.any((marker) => marker == imageMarker.marker);
+                                }).toList();
+                                
+                                // Afficher la galerie d'images pour ce cluster
+                                _showImageGallery(clusterImages);
                               },
                               child: Container(
                                 decoration: BoxDecoration(
@@ -475,12 +589,20 @@ void _toggleSelection(int index) {
                   onChanged: (RangeValues values) {
                     setState(() {
                       _currentRangeValues = values;
-                      _filterMarkersByDate();
+                      _updateFilters();
                     });
                   },
                 ),
                 CountryStayWidget(
-                    countryStayDurations: countryStayDurations),
+                    countryStayDurations: countryStayDurations,
+                    selectedCountries : selectedCountries,
+                    onCountrySelectedChange: (_selectedCountries) => 
+                    {
+                        setState(() {
+                          selectedCountries = _selectedCountries;
+                          _updateFilters();
+                        })
+                    },),
               ],
             ),
           ),

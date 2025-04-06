@@ -42,6 +42,7 @@ dependencies:
   exif: ^2.0.0
   image: ^3.0.1
   country_flags: ^2.0.0
+  connectivity_plus: ^5.0.2
   
 dev_dependencies:
   flutter_test:

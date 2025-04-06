@@ -2,6 +2,8 @@ import 'package:Image_Map_Viewer/services/ImageMarker.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geojson_vi/geojson_vi.dart';
 import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 
 class CountryInfo {
   String name;
@@ -42,6 +44,13 @@ class CountryStayTracker {
       }
     }
   }
+
+static List<ImageMarker> filterMarkersByCountry(List<ImageMarker> markers, List<CountryInfo> selectedCountries) {
+  return markers.where((marker) {
+    return selectedCountries.any((country) => country.name == marker.image.country.name);
+  }).toList();
+}
+
 
   /// Récupère le code ISO en fonction du nom du pays
   static String getISOFromCountryName(String countryName) {
@@ -106,6 +115,122 @@ class CountryStayTracker {
     print("🌍 Nearest country: $nearestCountry (Distance: ${minDistance.toStringAsFixed(2)} km)");
     return nearestCountry;
   }
+static List<Polygon> getPolygonsForOfflineMap() {
+  List<Polygon> countryPolygons = [];
+
+  if (CountryStayTracker.geoJsonData == null) return countryPolygons;
+
+  List<CountryInfo> allCountries = CountryStayTracker.geoJsonData!.features.map((feature) {
+    final name = feature?.properties?["ADMIN"] ?? "Unknown";
+    return CountryInfo.withName(name);
+  }).toList();
+
+  for (var country in allCountries) {
+    final List<List<LatLng>>? polygons = CountryStayTracker.getPolygonsForCountry(country);
+
+    if (polygons != null) {
+      for (var poly in polygons) {
+        if (poly.length > 2) {
+          countryPolygons.add(
+            Polygon(
+              points: poly,
+              borderColor: const Color.fromARGB(255, 0, 0, 0).withAlpha(50),
+              borderStrokeWidth: 0.5,
+              color: const Color.fromARGB(255, 255, 252, 252), // Use transparent or null for no fill
+              label: country.name,
+              labelStyle: const TextStyle(
+                color: Color.fromARGB(255, 170, 158, 158),
+                fontSize: 10,
+              ),
+            ),
+          );
+        }
+      }
+    }
+  }
+
+  return countryPolygons;
+}
+
+static List<Polygon> getPolygonsFromSelectedCountries(List<CountryInfo> selectedCountries) {
+  List<Polygon> countryPolygons = [];
+
+  for (var country in selectedCountries) {
+    final List<List<LatLng>>? polygons = CountryStayTracker.getPolygonsForCountry(country);
+
+    if (polygons != null) {
+      for (var poly in polygons) {
+        if (poly.length > 2) {
+          countryPolygons.add(
+            Polygon(
+              points: poly,
+              borderColor: const Color.fromARGB(255, 152, 54, 244),
+              borderStrokeWidth: 1.0,
+              color: const Color.fromARGB(255, 122, 6, 117).withOpacity(0.2),
+              label: country.name,
+              labelStyle: TextStyle(shadows:[Shadow(offset:Offset(1.5, 1.5), blurRadius:2.0, color:Colors.black,),],)
+            ),
+          );
+        }
+      }
+    }
+  }
+
+  return countryPolygons;
+}
+static List<List<LatLng>>? getPolygonsForCountry(CountryInfo country) {
+  if (geoJsonData == null) return null;
+
+  for (final feature in geoJsonData!.features) {
+    final name = feature?.properties?["ADMIN"] ?? "Unknown";
+
+    if (name.toLowerCase() == country.name.toLowerCase()) {
+      final geometry = feature?.geometry;
+
+      // Helper to convert and clamp coordinates
+      List<LatLng> toLatLngList(List<List<double>> coords) {
+        return coords.map((coord) {
+          final lat = coord[1].clamp(-90.0, 90.0);
+          final lng = coord[0].clamp(-180.0, 180.0);
+          return LatLng(lat, lng);
+        }).toList();
+      }
+
+      if (geometry is GeoJSONPolygon) {
+        final outerRing = geometry.coordinates.first;
+        List<LatLng> polygon = toLatLngList(outerRing);
+
+        // Ensure closed ring
+        if (polygon.isNotEmpty && polygon.first != polygon.last) {
+          polygon.add(polygon.first);
+        }
+
+        return [polygon]; // Single polygon inside a list
+      }
+
+      if (geometry is GeoJSONMultiPolygon) {
+        List<List<LatLng>> polygons = [];
+
+        for (final polygonCoords in geometry.coordinates) {
+          final outerRing = polygonCoords.first;
+          List<LatLng> polygon = toLatLngList(outerRing);
+
+          if (polygon.isNotEmpty && polygon.first != polygon.last) {
+            polygon.add(polygon.first);
+          }
+
+          polygons.add(polygon);
+        }
+
+        return polygons;
+      }
+    }
+  }
+
+  return null;
+}
+
+
 
   /// Vérifie si un point est à l'intérieur d'un polygone (Ray-casting algorithm)
   static bool _isPointInPolygon(LatLng point, GeoJSONPolygon polygon) {

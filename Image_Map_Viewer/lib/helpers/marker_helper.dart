@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import 'dart:ui' as ui;
+import 'package:Image_Map_Viewer/services/ImageData.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart'; // flutter_map package
 import 'package:latlong2/latlong.dart';
@@ -40,8 +41,8 @@ class MarkerHelper {
   }
 
   // Method to create a marker for flutter_map
-  static Future<Marker> createMarker(BuildContext context, LatLng position, Uint8List imageBytes, Function(BuildContext, Uint8List) showPopup) async {
-    final customIconWidget = await createCustomMarkerIcon(imageBytes);
+  static Future<Marker> createMarker(BuildContext context, LatLng position, ImageData imageData, Function(BuildContext, ImageData) showPopup) async {
+    final customIconWidget = await createCustomMarkerIcon(imageData.data);
 
     return Marker(
       width: 50, // Largeur du marker
@@ -50,7 +51,7 @@ class MarkerHelper {
       child: GestureDetector(
         onTap: () {
           // Afficher une popup lorsque le marker est cliqué
-          showPopup(context, imageBytes);
+          showPopup(context, imageData);
         },
         child: customIconWidget, // Affichage de l'icône personnalisée du marker
       ),
@@ -58,15 +59,15 @@ class MarkerHelper {
   }
 
   static void sortMarkersByDate(List<ImageMarker> listImageMarker) {
-  listImageMarker.sort((a, b) {
-    DateTime? dateA = a.image.timestamp;
-    DateTime? dateB = b.image.timestamp;
+    listImageMarker.sort((a, b) {
+      DateTime? dateA = a.image.timestamp;
+      DateTime? dateB = b.image.timestamp;
 
-    if (dateA == null && dateB == null) return 0;
-    if (dateA == null) return 1; 
-    if (dateB == null) return -1; 
+      if (dateA == null && dateB == null) return 0;
+      if (dateA == null) return 1; 
+      if (dateB == null) return -1; 
 
-    return dateA.compareTo(dateB);
-  });
-}
+      return dateA.compareTo(dateB);
+    });
+  }
 }

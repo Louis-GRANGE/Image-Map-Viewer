@@ -21,20 +21,36 @@ class Folder {
     required this.onMarkersUpdated,
   });
 
-  void _showPopup(BuildContext context, Uint8List imageBytes) {
+  void _showPopup(BuildContext context, ImageData imageData) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        content: Image.memory(imageBytes),
+        content: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Expanded(
+              child: Image.memory(
+                imageData!.data,
+                fit: BoxFit.scaleDown,
+              ),
+            ),
+            SizedBox(height: 8),
+            Text(
+              imageData!.name,
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Future<void> loadImages(BuildContext context, Function(ImageMarker) onMarkerAdded, Function() onStartLoading, Function(List<Map<String, dynamic>>) onAllImagesFound, Function(int) onEndLoading) async {
+  Future<void> loadImages(BuildContext context, Function(ImageMarker) onMarkerAdded, Function() onStartLoading, Function(List<Map<String, dynamic>>) onAllImagesFound, Function(List<ImageMarker>) onEndLoading) async {
     onStartLoading();
+    List<ImageMarker> NewsMarkerAdded = [];
     List<Map<String, dynamic>> images = await ImagePickerService.getAllImagesFromFolder(path);
     LatLng? firstLatLng;
-    int NbImageAdd = 0;
 
     onAllImagesFound(images);
 
@@ -43,18 +59,18 @@ class Folder {
       final latLng = await ExifService.getCoordinatesFromImage(imageData);
 
       if (latLng != null && latLng != LatLng(0, 0) && image['timestamp'] != null && image['timestamp'] != DateTime(0)) {
+        ImageData imgdt = ImageData.fromMap(image);
         final marker = await MarkerHelper.createMarker(
           context,
           LatLng(latLng.latitude, latLng.longitude),
-          imageData,
-          _showPopup,
+          imgdt,
+          (ctx, imgdt) => _showPopup(ctx, imgdt),
         );
 
-        NbImageAdd++;
-
-        ImageMarker imgMarker = ImageMarker(marker: marker, image: ImageData.fromMap(image));
+        ImageMarker imgMarker = ImageMarker(marker: marker, image: imgdt);
 
         markers.add(imgMarker);
+        NewsMarkerAdded.add(imgMarker);
 
         onMarkerAdded(imgMarker);  // Appel du callback pour ajouter le marqueur
 
@@ -63,6 +79,6 @@ class Folder {
       }
     }
     
-    onEndLoading(NbImageAdd);
+    onEndLoading(NewsMarkerAdded);
   }
 }
