@@ -213,6 +213,7 @@ Map<CountryInfo, int> calculateStayDurations(List<ImageMarker> _markers)
       }, () {
         setState(() {
           isLoading = true;
+          totalImagesFound = allMarkers.length;
         });
       }, (imagesFound) {
         setState(() {
@@ -221,7 +222,9 @@ Map<CountryInfo, int> calculateStayDurations(List<ImageMarker> _markers)
       }, (NewsMarkerAdded) {
         setState(() {
           isLoading = false;
-          selectedCountries = NewsMarkerAdded.map((marker) => marker.image.country).toSet().toList();   
+          final newCountries = NewsMarkerAdded.map((marker) => marker.image.country).toSet();
+          final currentCountries = selectedCountries.toSet();
+          selectedCountries = (currentCountries.union(newCountries)).toList();  
           _updateSliderRange();
           _updateFilters();
           debugInfo.add("${NewsMarkerAdded.length} images processed");
@@ -247,9 +250,17 @@ void addPolyline(LatLng start, LatLng end) {
 
 void _removeFolder(Folder folder) {
   setState(() {
+    totalImagesFound -= folder.markers.length;
+    if(folderList.length == 1) totalImagesFound = 0;
     folderList.remove(folder); 
     allMarkers = allMarkers.where((marker) => !folder.markers.contains(marker)).toList();
     totalImages = allMarkers.length;
+    
+    // Mettre à jour les pays sélectionnés
+    selectedCountries = selectedCountries.where((country) {
+      // Vérifie s’il reste au moins une image pour ce pays
+      return allMarkers.any((marker) => marker.image.country == country);
+    }).toList();
 
     // Mettre à jour les marqueurs affichés après suppression
     _updateFilters();

@@ -4,6 +4,7 @@ import 'package:geojson_vi/geojson_vi.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'Tools.dart';
 
 class CountryInfo {
   String name;
@@ -32,6 +33,7 @@ class CountryInfo {
 
 class CountryStayTracker {
   static GeoJSONFeatureCollection? geoJsonData;
+  static CountryInfo? hoveredCountry;
 
   /// Charge le fichier GeoJSON une seule fois en mémoire
   static Future<void> loadGeoJson() async {
@@ -148,7 +150,6 @@ static List<Polygon> getPolygonsForOfflineMap() {
       }
     }
   }
-
   return countryPolygons;
 }
 
@@ -166,9 +167,19 @@ static List<Polygon> getPolygonsFromSelectedCountries(List<CountryInfo> selected
               points: poly,
               borderColor: const Color.fromARGB(255, 152, 54, 244),
               borderStrokeWidth: 1.0,
-              color: const Color.fromARGB(255, 122, 6, 117).withOpacity(0.2),
+              color: CountryStayTracker.hoveredCountry != null && CountryStayTracker.hoveredCountry!.name == country.name
+                  ? const Color.fromARGB(255, 122, 6, 117).withOpacity(0.5) // Plus foncé
+                  : const Color.fromARGB(255, 122, 6, 117).withOpacity(0.2),
               label: country.name,
-              labelStyle: TextStyle(shadows:[Shadow(offset:Offset(1.5, 1.5), blurRadius:2.0, color:Colors.black,),],)
+              labelStyle: const TextStyle(
+                shadows: [
+                  Shadow(
+                    offset: Offset(1.5, 1.5),
+                    blurRadius: 2.0,
+                    color: Colors.black,
+                  ),
+                ],
+              ),
             ),
           );
         }
@@ -178,6 +189,24 @@ static List<Polygon> getPolygonsFromSelectedCountries(List<CountryInfo> selected
 
   return countryPolygons;
 }
+
+static CountryInfo? getCountryAtPosition(LatLng position, List<CountryInfo> selectedCountries) {
+  for (var country in selectedCountries) {
+    final polygons = CountryStayTracker.getPolygonsForCountry(country);
+    if (polygons != null) {
+      for (var poly in polygons) {
+        if (CountryStayTracker._isPointInPolygon(position, GeoJSONPolygon([
+          poly.map((p) => [p.longitude, p.latitude]).toList()
+        ]))) {
+          return country;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+
 static List<List<LatLng>>? getPolygonsForCountry(CountryInfo country) {
   if (geoJsonData == null) return null;
 
