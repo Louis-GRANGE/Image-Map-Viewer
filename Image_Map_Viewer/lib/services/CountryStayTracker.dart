@@ -1,4 +1,5 @@
 import 'package:Image_Map_Viewer/services/ImageMarker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geojson_vi/geojson_vi.dart';
 import 'package:flutter/services.dart' show rootBundle;
@@ -70,9 +71,7 @@ static List<ImageMarker> filterMarkersByCountry(List<ImageMarker> markers, List<
     print("⚠️ Pays non trouvé : $countryName");
     return "??"; // Retourne "??" si aucun pays trouvé
   }
-
-  /// Vérifie dans quel pays se trouvent les coordonnées GPS, sinon trouve le pays le plus proche
-  static CountryInfo getCountryFromCoordinates(LatLng coordinates) {
+static CountryInfo getCountryFromCoordinates(LatLng coordinates) {
     if (geoJsonData == null) return CountryInfo("Unknown", "??");
 
     CountryInfo nearestCountry = CountryInfo("Unknown", "??");

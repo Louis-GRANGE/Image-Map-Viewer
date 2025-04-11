@@ -262,6 +262,8 @@ void _removeFolder(Folder folder) {
       return allMarkers.any((marker) => marker.image.country == country);
     }).toList();
 
+    _updateSliderRange();
+
     // Mettre à jour les marqueurs affichés après suppression
     _updateFilters();
   });
