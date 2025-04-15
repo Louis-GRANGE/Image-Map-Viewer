@@ -34,20 +34,27 @@ class DateSliderFilter extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 20),
       child: RotatedBox(
         quarterTurns: 3,
-        child: RangeSlider(
-          values: currentRangeValues,
-          min: minSliderValue,
-          max: maxSliderValue,
-          divisions: 100,
-          labels: RangeLabels(
-            DateFormat('yyyy-MM-dd').format(
-              DateTime.fromMillisecondsSinceEpoch(currentRangeValues.start.round().toInt())
-            ),
-            DateFormat('yyyy-MM-dd').format(
-              DateTime.fromMillisecondsSinceEpoch(currentRangeValues.end.round().toInt())
-            ),
+        child: SliderTheme(
+          data: SliderTheme.of(context).copyWith(
+            showValueIndicator: ShowValueIndicator.always,
+            valueIndicatorTextStyle: const TextStyle(color: Colors.white),
+            rangeValueIndicatorShape: PaddleRangeSliderValueIndicatorShape(),
           ),
-          onChanged: onChanged,
+          child: RangeSlider(
+            values: currentRangeValues,
+            min: minSliderValue,
+            max: maxSliderValue,
+            divisions: 100,
+            labels: RangeLabels(
+              DateFormat('yyyy-MM-dd').format(
+                DateTime.fromMillisecondsSinceEpoch(currentRangeValues.start.round()),
+              ),
+              DateFormat('yyyy-MM-dd').format(
+                DateTime.fromMillisecondsSinceEpoch(currentRangeValues.end.round()),
+              ),
+            ),
+            onChanged: onChanged,
+          ),
         ),
       ),
     );

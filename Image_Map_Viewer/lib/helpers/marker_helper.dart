@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:Image_Map_Viewer/services/ImageData.dart';
@@ -10,6 +11,11 @@ import '../services/ImageMarker.dart'; // For LatLng in flutter_map
 class MarkerHelper {
   // Method to create a custom marker as a Widget for flutter_map
   static Future<Widget> createCustomMarkerIcon(Uint8List imageBytes) async {
+    if (!await isValidImageBytes(imageBytes)) {
+      print("⛔ Invalid image data, skipping");
+      return const Icon(Icons.broken_image, size: 50, color: Colors.red);
+    }
+
     const int size = 50;
     final ui.PictureRecorder pictureRecorder = ui.PictureRecorder();
     final Canvas canvas = Canvas(pictureRecorder);
@@ -39,6 +45,20 @@ class MarkerHelper {
     // Return a widget that displays the custom marker image
     return Image.memory(finalMarkerBytes);
   }
+
+static Future<bool> isValidImageBytes(Uint8List bytes) async {
+  try {
+    final codec = await ui.instantiateImageCodec(
+      bytes,
+      targetWidth: 1,
+      targetHeight: 1,
+    );
+    await codec.getNextFrame(); // Just to trigger decoding
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
 
   // Method to create a marker for flutter_map
   static Future<Marker> createMarker(BuildContext context, LatLng position, ImageData imageData, Function(BuildContext, ImageData) showPopup) async {

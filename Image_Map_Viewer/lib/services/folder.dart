@@ -60,6 +60,7 @@ class Folder {
 
       if (latLng != null && latLng != LatLng(0, 0) && image['timestamp'] != null && image['timestamp'] != DateTime(0)) {
         ImageData imgdt = ImageData.fromMap(image);
+        debugPrint("🗺️  Adding marker : ${imgdt.name}");
         final marker = await MarkerHelper.createMarker(
           context,
           LatLng(latLng.latitude, latLng.longitude),
@@ -67,12 +68,17 @@ class Folder {
           (ctx, imgdt) => _showPopup(ctx, imgdt),
         );
 
-        ImageMarker imgMarker = ImageMarker(marker: marker, image: imgdt);
+        if (marker != null) {
+          ImageMarker imgMarker = ImageMarker(marker: marker, image: imgdt);
+          // Add imgMarker to your list or process it
+          markers.add(imgMarker);
+          NewsMarkerAdded.add(imgMarker);
 
-        markers.add(imgMarker);
-        NewsMarkerAdded.add(imgMarker);
-
-        onMarkerAdded(imgMarker);  // Appel du callback pour ajouter le marqueur
+          onMarkerAdded(imgMarker);  // Appel du callback pour ajouter le marqueur
+        }
+        else {
+          debugPrint("⚠️ Skipped marker due to image error.");
+        }
 
         firstLatLng ??= latLng;
         await Future.delayed(const Duration(milliseconds: 100));
